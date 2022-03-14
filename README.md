@@ -1,4 +1,4 @@
 # Portfolio-Website
-This is a project demonstraing my HTML skills
+This is my website
 
 - Links and Images
