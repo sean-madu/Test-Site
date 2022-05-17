@@ -7,6 +7,12 @@ export class AV3DOBJECT{
     }
 }
 
+export class V3DSingleLightSource{
+    constructor(position, color){
+        this.position = position;
+        this.color = color;
+    }
+}
 export class V3DHeaderInformation{
     constructor(){
         this.canvasWidth = null;

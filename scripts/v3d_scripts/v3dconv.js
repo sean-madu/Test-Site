@@ -10,6 +10,7 @@ let gzip = require("gzip-js"),
         level: 9,
     }
 ;
+const { assert } = require("console");
 let xdr = require("js-xdr");
 class V3DReader{
     /*
@@ -17,6 +18,9 @@ class V3DReader{
     */
 
     constructor(fil){
+        //Too keep track of how many bytes we have read so we can 
+        // simulate moving the file reader by making sub arrays
+        this.bytesRead = 0; 
         this.file = fil;
         this.objects = [];
         this.materials = [];
@@ -24,63 +28,184 @@ class V3DReader{
         this.header = new v3dobjects.V3DHeaderInformation(); 
         this.file_ver = null;
         this.processed = false;
-        this.object_process_fns = {
-            v3dtypes_bezierPatch : this.process_bezierpatch,
-        };
+        this.object_process_fns = function(type){
+            switch (type) {
+              case v3dtypes.v3dheadertypes_header:
+               return this.process_header; 
+               break;
+              case v3dtypes.v3dtypes_header:
+                return this.process_header;
+                break;
+              case v3dtypes.v3dtypes_bezierPatch:
+                return this.process_bezierpatch;
+                break;
+              default:
+                return undefined;
+            }
+          }
+          /*
+          this.object_process_fns = {
+              v3dtypes_bezierPatch: this.process_bezierpatch,
+              v3dtypes_header : this.process_header
+          };
+        console.log(this.object_process_fns[v3dtypes.v3dtypes_bezierPatch]);
+        */
+    }
+
+    unpack_bool(){
+        let ret_val = xdr.Bool.fromXDR(this.file.slice(this.bytesRead, this.bytesRead + 4 + 1));
+        this.bytesRead += 4;
+        return ret_val;
     }
 
     unpack_double(){
-        return xdr.Double.fromXDR(file);
+        let ret_val =  xdr.Double.fromXDR(this.file.slice(this.bytesRead, this.bytesRead + 8 + 1));
+        this.bytesRead += 8;
+        return ret_val;
+    }
+
+    unpack_float(){
+       let ret_val = xdr.Float.fromXDR(this.file.slice(this.bytesRead, this.bytesRead + 4 + 1));
+       this.bytesRead += 4;
+       return ret_val;
+    }
+
+    unpack_unsigned_int(){
+        let ret_val = xdr.UnsignedInt.fromXDR(this.file.slice(this.bytesRead, this.bytesRead + 4 + 1));
+        this.bytesRead += 4;
+        return ret_val;
+    }
+
+    unpack_pair(){
+        let x = this.unpack_double();
+        let y = this.unpack_double();
+        return [x, y];
     }
 
     unpack_triple(){
-        x = unpack_double();
-        y = unpack_double();
-        z = unpack_double();
+        let x = this.unpack_double();
+        let y = this.unpack_double();
+        let z = this.unpack_double();
         return [x, y, z];
     }
-    unpack_triple_n(n){
-        final_list = [];
-        for(let i = 0; i < n; i++){
-            let temp = this.unpack_triple();
-            for (let i = 0; i < temp.length(); i++)
-            {
-                final_list.push(temp[i]);
-            }
+
+    unpack_triple_n(num){
+        let final_list = [];
+        for(let i = 0; i < num; i++){
+            final_list.push(this.unpack_triple());
         }
         return final_list;
     }
 
+
     unpack_rgb_float(){
-        let r = xdr.Float.fromXDR(this.file);
-        let g = xdr.Float.fromXDR(this.file);
-        let b = xdr.Float.fromXDR(this.file);
+        let r = this.unpack_float();
+        let g = this.unpack_float();
+        let b = this.unpack_float();
         return [r, g, b];
     }
     unpack_rgba_float(){
-        let r = xdr.Float.fromXDR(this.file);
-        let g = xdr.Float.fromXDR(this.file);
-        let b = xdr.Float.fromXDR(this.file);
-        let a = xdr.Float.fromXDR(this.file);
+        let r = this.unpack_float();
+        let g = this.unpack_float();
+        let b = this.unpack_float();
+        let a = this.unpack_float();
         return [r, g, b, a];
     }
 
     process_bezierpatch()
     {
-        console.log(this.unpack_triple_n(16));
+        let base_ctlpts = this.unpack_triple_n(16);
+        let center_id = this.unpack_unsigned_int();
+        let material_id = this.unpack_unsigned_int();
+        assert(base_ctlpts.length == 16);
+        return new v3dobjects.V3DBezierPatch(base_ctlpts, material_id, center_id);
     }
 
-    //Find a way to do EOF 
+    //@todo EOF
     get_obj_type(){
         try{
-        let obj_type = xdr.UnsignedInt.fromXDR(this.file);
+        let obj_type =  this.unpack_unsigned_int();
         return obj_type;
         }
         catch(err){
+            console.log(err);
             return null;
         }
     }
 
+
+    process_header(){
+        let header = new v3dobjects.V3DHeaderInformation();
+        let num_headers = this.unpack_unsigned_int();
+        for(let i = 0; i < num_headers; i++){
+            let header_type = this.unpack_unsigned_int();
+            let block_count = this.unpack_unsigned_int();
+
+            if(header_type == v3dheadertypes.v3dheadertypes_canvasWidth){
+                header.canvasWidth = this.unpack_unsigned_int();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_canvasHeight){
+                header.canvasHeight = this.unpack_unsigned_int();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_minBound){
+                header.minBound = this.unpack_triple();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_maxBound){
+                header.maxBound = this.unpack_triple();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_orthographic){
+                header.orthographic = this.unpack_bool();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_angleOfView){
+                header.angleOfView = this.unpack_double();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_initialZoom){
+                header.initialZoom = this.unpack_double();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_viewportShift){
+                header.viewportShift = this.unpack_pair();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_viewportMargin){
+                header.viewportMargin = this.unpack_pair();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_light){
+                let position = this.unpack_triple();
+                let color = this.unpack_rgb_float();
+                header.lights.push(new v3dobjects.V3DSingleLightSource(position, color));
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_background){
+                header.background = this.unpack_rgba_float();
+            }
+            else if (header_type == v3dheadertypes.v3dheadertypes_absolute){
+                // Configuration from now on
+                header.configuration.absolute = this.unpack_bool();
+            }
+            else if(header_type == v3dheadertypes.v3dheadertypes_zoomFactor){
+                header.configuration.zoomFactor = this.unpack_double();
+            }
+            else if(header_type == v3dheadertypes.v3dheadertypes_zoomPinchFactor){
+                header.configuration.zoomPinch_factor = this.unpack_double();
+            }
+            else if(header_type == v3dheadertypes.v3dheadertypes_zoomStep){
+                header.configuration.zoomStep = this.unpack_double();
+            }
+            else if(header_type == v3dheadertypes.v3dheadertypes_shiftHoldDistance){
+                header.configuration.shiftHoldDistance = this.unpack_double();
+            }
+            else if(header_type == v3dheadertypes.v3dheadertypes_shiftWaitTime){
+                header.configuration.shiftWaitTime = this.unpack_double();
+            }
+            else if(header_type == v3dheadertypes.v3dheadertypes_vibrateTime){
+                header.configuration.vibrateTime = this.unpack_double();
+            }
+            else{
+                for(let j = 0; j < block_count; j++){
+                    this.unpack_unsigned_int();
+                }
+            }
+        }
+        return header;
+    }
     process_material(){
         let diffuse = this.unpack_rgba_float();
         let emissive = this.unpack_rgba_float();
@@ -91,8 +216,8 @@ class V3DReader{
     }
 
     get_fn_process_type(typ){
-        if(typ in this.object_process_fns){
-        return this.object_process_fns[typ];
+        if(this.object_process_fns(typ) != undefined ){
+        return this.object_process_fns(typ);
         }
         else{
             return null;
@@ -109,24 +234,28 @@ class V3DReader{
         }
         
         this.processed = true;
-        this.file_ver = xdr.UnsignedInt.fromXDR(this.file);
-        let allow_double_precision = xdr.Bool.fromXDR(this.file);
+        this.file_ver = this.unpack_unsigned_int();
+        let allow_double_precision = this.unpack_bool();
         
         if(!allow_double_precision){
-            this.unpack_double = xdr.Float.fromXDR;
+            this.unpack_double = this.unpack_float;
         }
 
        let type;
-       xdr.UnsignedInt.fromXDR(this.file);
-
         while(type = this.get_obj_type()){
             if(type == v3dtypes.v3dtypes_material){
                 this.materials.push(this.process_material());
             }
+            else if(type == v3dtypes.v3dtypes_centers){
+                console.log("types");
+            }
+            else if (type == v3dtypes.v3dtypes_header){
+                this.header = this.process_header();
+            }
             else{
             let fn = this.get_fn_process_type(type);
             if(fn != null){
-               let obj = new fn();
+               let obj = fn();
                 this.objects.push(obj);
             }
             else{
@@ -135,9 +264,10 @@ class V3DReader{
         }
         }
         //Set the reader to the end of the file
-        //xdr.seek(xdr.Cursor.buffer().length);
+        //this.bytesRead = 0;
     }
 
+    //This is more like from_file_arr 
     static from_file_name(file_name)
     {
         let file = gzip.unzip(file_name);
@@ -152,8 +282,7 @@ const input = document.querySelector('input[type="file"]');
 input.addEventListener('change', function(e){
     let reader = new FileReader();
     reader.readAsArrayBuffer(input.files[0]);
-    reader.onloadend = function (evt)
-    {
+    reader.onloadend = function (evt){
       if(evt.target.readyState == FileReader.DONE){
         let arrayBuffer = evt.target.result;
         let v3dobj = V3DReader.from_file_name(new Uint8Array(arrayBuffer));
