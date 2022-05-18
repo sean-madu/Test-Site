@@ -11029,7 +11029,7 @@ class V3DReader{
     */
 
     constructor(fil){
-        //Too keep track of how many bytes we have read so we can 
+        //To keep track of how many bytes we have read so we can 
         // simulate moving the file reader by making sub arrays
         this.bytesRead = 0; 
         this.file = fil;
@@ -11041,17 +11041,20 @@ class V3DReader{
         this.processed = false;
         this.object_process_fns = function(type){
             switch (type) {
-              case v3dtypes.v3dheadertypes_header:
-               return this.process_header; 
-               break;
-              case v3dtypes.v3dtypes_header:
-                return this.process_header;
-                break;
-              case v3dtypes.v3dtypes_bezierPatch:
-                return this.process_bezierpatch;
-                break;
-              default:
-                return undefined;
+                case v3dtypes.v3dheadertypes_header:
+                    return this.process_header; 
+                    break;
+                case v3dtypes.v3dtypes_header:
+                    return this.process_header;
+                    break;
+                case v3dtypes.v3dtypes_bezierPatch:
+                    return this.process_bezierpatch;
+                    break;
+                case v3dtypes.v3dtypes_bezierTriangle:
+                    return this.process_beziertriangle;
+                    break;
+                default:
+                    return undefined;
             }
           }
           /*
@@ -11102,7 +11105,7 @@ class V3DReader{
 
     unpack_triple_n(num){
         let final_list = [];
-        for(let iterat = 0; iterat < num; iterat++){
+        for(let i = 0; i < num; i++){
             final_list.push(this.unpack_triple());
         }
         return final_list;
@@ -11123,6 +11126,14 @@ class V3DReader{
         return [r, g, b, a];
     }
 
+    process_beziertriangle(){
+        let base_ctlpts = this.unpack_triple_n(10);
+        let center_id = this.unpack_unsigned_int();
+        let material_id = this.unpack_unsigned_int();
+        assert(base_ctlpts.length == 10);
+        return new v3dobjects.V3DBezierTriangle(base_ctlpts, material_id, center_id);
+    }
+    
     process_bezierpatch()
     {
         let base_ctlpts = this.unpack_triple_n(16);
@@ -11134,12 +11145,11 @@ class V3DReader{
 
     //@todo EOF
     get_obj_type(){
-        try{
+        if(this.bytesRead + 4 <= this.file.length){
         let obj_type =  this.unpack_unsigned_int();
         return obj_type;
         }
-        catch(err){
-            console.log(err);
+        else{
             return null;
         }
     }
@@ -11217,6 +11227,12 @@ class V3DReader{
         }
         return header;
     }
+
+    process_centres(){
+        let number_centers = this.unpack_unsigned_int;
+        return this.unpack_triple_n(number_centers);
+    }
+
     process_material(){
         let diffuse = this.unpack_rgba_float();
         let emissive = this.unpack_rgba_float();
@@ -11228,7 +11244,8 @@ class V3DReader{
 
     get_fn_process_type(typ){
         if(this.object_process_fns(typ) != undefined ){
-        return this.object_process_fns(typ);
+        //Binding 'this' to the function so that 'this' doesnt get lost
+        return this.object_process_fns(typ).bind(this);
         }
         else{
             return null;
@@ -11249,7 +11266,7 @@ class V3DReader{
         let allow_double_precision = this.unpack_bool();
         
         if(!allow_double_precision){
-            this.unpack_double = this.unpack_float;
+            this.unpack_double = this.unpack_float.bind(this);
         }
 
        let type;
@@ -11258,7 +11275,7 @@ class V3DReader{
                 this.materials.push(this.process_material());
             }
             else if(type == v3dtypes.v3dtypes_centers){
-                console.log("types");
+                this.centeres = this.process_centres();
             }
             else if (type == v3dtypes.v3dtypes_header){
                 this.header = this.process_header();
@@ -11274,6 +11291,7 @@ class V3DReader{
             }
         }
         }
+        console.log(` bytes read : ${this.bytesRead} length : ${this.file.length}`);
         //Set the reader to the end of the file
         //this.bytesRead = 0;
     }
@@ -11298,13 +11316,10 @@ input.addEventListener('change', function(e){
         let arrayBuffer = evt.target.result;
         let v3dobj = V3DReader.from_file_name(new Uint8Array(arrayBuffer));
         v3dobj.process();
+        console.log(v3dobj.objects);
       }
     }
 }, false);
-
-
-
-
 },{"console":202,"gzip-js":4,"js-xdr":14}],193:[function(require,module,exports){
 (function (global){(function (){
 'use strict';

@@ -61,3 +61,10 @@ export class V3DMaterial extends AV3DOBJECT{
         this.f0 = f0;
     }
 }
+
+export class V3DBezierTriangle extends AV3DOBJECT{
+    constructor(ctrl_points, material_id, center_index){
+        super(material_id, center_index);
+        self.control_points = ctrl_points;
+    }
+}
