@@ -11023,6 +11023,9 @@ let gzip = require("gzip-js"),
 ;
 const { assert } = require("console");
 let xdr = require("js-xdr");
+let Min = [-310.6061,-201.6304,-2096.144];
+let Max = [232.9609,205.6273,-1194.409];
+
 class V3DReader{
     /*
     * @todo add other v3d objects
@@ -11127,23 +11130,32 @@ class V3DReader{
     }
 
     process_beziertriangle(){
-        let base_ctlpts = this.unpack_triple_n(10);
-        let center_id = this.unpack_unsigned_int();
-        let material_id = this.unpack_unsigned_int();
-        assert(base_ctlpts.length == 10);
-        return new v3dobjects.V3DBezierTriangle(base_ctlpts, material_id, center_id);
+        let controlpoints = this.unpack_triple_n(10);
+        let CenterIndex = this.unpack_unsigned_int();
+        let MaterialIndex = this.unpack_unsigned_int();
+        assert(controlpoints.length == 10);
+        P.push(new BezierPatch(controlpoints, CenterIndex, MaterialIndex, Min, Max));
+        return new v3dobjects.V3DBezierTriangle(controlpoints, MaterialIndex, CenterIndex);
     }
     
     process_bezierpatch()
     {
-        let base_ctlpts = this.unpack_triple_n(16);
-        let center_id = this.unpack_unsigned_int();
-        let material_id = this.unpack_unsigned_int();
-        assert(base_ctlpts.length == 16);
-        return new v3dobjects.V3DBezierPatch(base_ctlpts, material_id, center_id);
+        let controlpoints = this.unpack_triple_n(16);
+        let CenterIndex = this.unpack_unsigned_int();
+        let MaterialIndex = this.unpack_unsigned_int();
+        //TODO Fix me
+        //let Min=[-310.6061,-201.6304,-2096.144];
+        //let Max=[232.9609,205.6273,-1194.409]; 
+        //let color = null;
+
+        assert(controlpoints.length == 16);
+
+        P.push(new BezierPatch(controlpoints,CenterIndex,MaterialIndex,Min,Max));
+        
+        return new v3dobjects.V3DBezierPatch(controlpoints, MaterialIndex, CenterIndex);
     }
 
-    //@todo EOF
+
     get_obj_type(){
         if(this.bytesRead + 4 <= this.file.length){
         let obj_type =  this.unpack_unsigned_int();
@@ -11163,61 +11175,64 @@ class V3DReader{
             let block_count = this.unpack_unsigned_int();
 
             if(header_type == v3dheadertypes.v3dheadertypes_canvasWidth){
-                header.canvasWidth = this.unpack_unsigned_int();
+                canvasWidth = header.canvasWidth = this.unpack_unsigned_int();
+                
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_canvasHeight){
-                header.canvasHeight = this.unpack_unsigned_int();
+                canvasHeight = header.canvasHeight = this.unpack_unsigned_int();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_minBound){
-                header.minBound = this.unpack_triple();
+                minBound = header.minBound = this.unpack_triple();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_maxBound){
-                header.maxBound = this.unpack_triple();
+                maxBound = header.maxBound = this.unpack_triple();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_orthographic){
-                header.orthographic = this.unpack_bool();
+               orthographic = header.orthographic = this.unpack_bool();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_angleOfView){
-                header.angleOfView = this.unpack_double();
+               angleOfView =  header.angleOfView = this.unpack_double();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_initialZoom){
-                header.initialZoom = this.unpack_double();
+               initialZoom =  header.initialZoom = this.unpack_double();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_viewportShift){
-                header.viewportShift = this.unpack_pair();
+               viewportShift =  header.viewportShift = this.unpack_pair();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_viewportMargin){
-                header.viewportMargin = this.unpack_pair();
+                viewportMargin = header.viewportMargin = this.unpack_pair();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_light){
                 let position = this.unpack_triple();
                 let color = this.unpack_rgb_float();
                 header.lights.push(new v3dobjects.V3DSingleLightSource(position, color));
+                //TODO Fix so we can muliple lights
+                Lights=[new Light(position,color),]; 
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_background){
-                header.background = this.unpack_rgba_float();
+                   Background =  header.background = this.unpack_rgba_float();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_absolute){
                 // Configuration from now on
-                header.configuration.absolute = this.unpack_bool();
+               absolute = header.configuration.absolute = this.unpack_bool();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_zoomFactor){
-                header.configuration.zoomFactor = this.unpack_double();
+               zoomFactor = header.configuration.zoomFactor = this.unpack_double();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_zoomPinchFactor){
-                header.configuration.zoomPinch_factor = this.unpack_double();
+               zoomPinchFactor = header.configuration.zoomPinch_factor = this.unpack_double();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_zoomStep){
-                header.configuration.zoomStep = this.unpack_double();
+               zoomStep =  header.configuration.zoomStep = this.unpack_double();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_shiftHoldDistance){
-                header.configuration.shiftHoldDistance = this.unpack_double();
+                 shiftHoldDistance = header.configuration.shiftHoldDistance = this.unpack_double();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_shiftWaitTime){
-                header.configuration.shiftWaitTime = this.unpack_double();
+               shiftWaitTime =  header.configuration.shiftWaitTime = this.unpack_double();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_vibrateTime){
-                header.configuration.vibrateTime = this.unpack_double();
+               vibrateTime = header.configuration.vibrateTime = this.unpack_double();
             }
             else{
                 for(let j = 0; j < block_count; j++){
@@ -11237,8 +11252,12 @@ class V3DReader{
         let diffuse = this.unpack_rgba_float();
         let emissive = this.unpack_rgba_float();
         let specular = this.unpack_rgba_float();
-        //List contains Shininess, metallic and f0
         let result = this.unpack_rgb_float();
+        let shininess = result[0];
+        let metallic = result[1];
+        let fresnel0 = result[2];
+        Materials.push(new Material(diffuse,emissive,specular,shininess,metallic,
+            fresnel0));
         return new v3dobjects.V3DMaterial(diffuse, emissive, specular, result[0], result[1], result[2]);
     }
 
@@ -11258,7 +11277,7 @@ class V3DReader{
         }
         
         if(this.processed && forced){
-            xdr.rewind();
+            this.bytesRead = 0;
         }
         
         this.processed = true;
@@ -11291,9 +11310,9 @@ class V3DReader{
             }
         }
         }
-        console.log(` bytes read : ${this.bytesRead} length : ${this.file.length}`);
-        //Set the reader to the end of the file
-        //this.bytesRead = 0;
+        if(this.bytesRead != this.file.length){
+            throw 'All bytes in V3D file not read';
+        }
     }
 
     //This is more like from_file_arr 
@@ -11303,9 +11322,19 @@ class V3DReader{
         let reader_obj = new V3DReader(file);
         return reader_obj;
     }
-
 } 
 
+//Load in asy_gl
+let asy_gl =  document.createElement("script");
+asy_gl.type = 'text/javascript';
+
+asy_gl.src = "https://www.math.ualberta.ca/~bowman/asygl.js";
+
+asy_gl.onload = function(){
+    console.log(Nmaterials);
+}
+
+document.head.appendChild(asy_gl);
 //get Byte Array from file for gzip
 const input = document.querySelector('input[type="file"]');
 input.addEventListener('change', function(e){
@@ -11316,9 +11345,13 @@ input.addEventListener('change', function(e){
         let arrayBuffer = evt.target.result;
         let v3dobj = V3DReader.from_file_name(new Uint8Array(arrayBuffer));
         v3dobj.process();
-        console.log(v3dobj.objects);
+        webGLStart();
       }
     }
+
+
+
+
 }, false);
 },{"console":202,"gzip-js":4,"js-xdr":14}],193:[function(require,module,exports){
 (function (global){(function (){
