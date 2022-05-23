@@ -11009,8 +11009,7 @@ module.exports = values;
 });
 
 },{}],192:[function(require,module,exports){
-//V3D Reader file
-//Put all exports at the top of other files
+//V3D Reader and Renderer
 "use scrict";
 
 //We need to use browserify to
@@ -11023,14 +11022,36 @@ let gzip = require("gzip-js"),
 ;
 const { assert } = require("console");
 let xdr = require("js-xdr");
+
+
 let Min = [-310.6061,-201.6304,-2096.144];
 let Max = [232.9609,205.6273,-1194.409];
+
+//What is this?
+let Transform=[0.1762732,
+    -0.08715096,
+    0.1482109,
+    14.37726,
+    0.1719354,
+    0.08934971,
+    -0.1519502,
+    4.135837,
+    2.73381e-17,
+    0.2122624,
+    0.1248145,
+    39.91369,
+    3.85186e-34,
+    3.044927e-18,
+    1.758601e-18,
+    1];
+
+let webgl2 = false;
+let ibl = false;
 
 class V3DReader{
     /*
     * @todo add other v3d objects
     */
-
     constructor(fil){
         //To keep track of how many bytes we have read so we can 
         // simulate moving the file reader by making sub arrays
@@ -11056,17 +11077,16 @@ class V3DReader{
                 case v3dtypes.v3dtypes_bezierTriangle:
                     return this.process_beziertriangle;
                     break;
+                case v3dtypes.v3dtypes_curves:
+                    return this.process_beziercurve;
+                    break;
+                case v3dtypes.v3dtypes_pixel:
+                    return this.process_pixel;
+                    break;
                 default:
                     return undefined;
             }
           }
-          /*
-          this.object_process_fns = {
-              v3dtypes_bezierPatch: this.process_bezierpatch,
-              v3dtypes_header : this.process_header
-          };
-        console.log(this.object_process_fns[v3dtypes.v3dtypes_bezierPatch]);
-        */
     }
 
     unpack_bool(){
@@ -11075,11 +11095,13 @@ class V3DReader{
         return ret_val;
     }
 
+
     unpack_double(){
         let ret_val =  xdr.Double.fromXDR(this.file.slice(this.bytesRead, this.bytesRead + 8 + 1));
         this.bytesRead += 8;
         return ret_val;
     }
+
 
     unpack_float(){
        let ret_val = xdr.Float.fromXDR(this.file.slice(this.bytesRead, this.bytesRead + 4 + 1));
@@ -11087,11 +11109,13 @@ class V3DReader{
        return ret_val;
     }
 
+
     unpack_unsigned_int(){
         let ret_val = xdr.UnsignedInt.fromXDR(this.file.slice(this.bytesRead, this.bytesRead + 4 + 1));
         this.bytesRead += 4;
         return ret_val;
     }
+
 
     unpack_pair(){
         let x = this.unpack_double();
@@ -11099,12 +11123,14 @@ class V3DReader{
         return [x, y];
     }
 
+
     unpack_triple(){
         let x = this.unpack_double();
         let y = this.unpack_double();
         let z = this.unpack_double();
         return [x, y, z];
     }
+
 
     unpack_triple_n(num){
         let final_list = [];
@@ -11121,6 +11147,8 @@ class V3DReader{
         let b = this.unpack_float();
         return [r, g, b];
     }
+
+
     unpack_rgba_float(){
         let r = this.unpack_float();
         let g = this.unpack_float();
@@ -11128,6 +11156,26 @@ class V3DReader{
         let a = this.unpack_float();
         return [r, g, b, a];
     }
+
+
+    //todo: add return for bezier curve, pixel, triangles
+    //Are triangles in v3d conv the same as triangles in asy_gl? 
+    // They have different parameters
+    process_beziercurve(){
+        let controlpoints = this.unpack_triple_n(4);
+        let CenterIndex = this.unpack_unsigned_int();
+        let MaterialIndex = this.unpack_unsigned_int();
+        P.push(new BezierCurve(controlpoints, CenterIndex, MaterialIndex, Min, Max));
+    }
+
+
+    process_pixel(){
+        let controlpoint = this.unpack_triple();
+        let width = this.unpack_double();
+        let MaterialIndex = this.unpack_unsigned_int();
+        P.push(new Pixel(controlpoint, width, MaterialIndex, Min, Max));
+    }
+
 
     process_beziertriangle(){
         let controlpoints = this.unpack_triple_n(10);
@@ -11138,6 +11186,7 @@ class V3DReader{
         return new v3dobjects.V3DBezierTriangle(controlpoints, MaterialIndex, CenterIndex);
     }
     
+
     process_bezierpatch()
     {
         let controlpoints = this.unpack_triple_n(16);
@@ -11206,11 +11255,10 @@ class V3DReader{
                 let position = this.unpack_triple();
                 let color = this.unpack_rgb_float();
                 header.lights.push(new v3dobjects.V3DSingleLightSource(position, color));
-                //TODO Fix so we can muliple lights
-                Lights=[new Light(position,color),]; 
+                Lights.push(new Light(position,color)); 
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_background){
-                   Background =  header.background = this.unpack_rgba_float();
+                Background =  header.background = this.unpack_rgba_float();
             }
             else if (header_type == v3dheadertypes.v3dheadertypes_absolute){
                 // Configuration from now on
@@ -11226,7 +11274,7 @@ class V3DReader{
                zoomStep =  header.configuration.zoomStep = this.unpack_double();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_shiftHoldDistance){
-                 shiftHoldDistance = header.configuration.shiftHoldDistance = this.unpack_double();
+                shiftHoldDistance = header.configuration.shiftHoldDistance = this.unpack_double();
             }
             else if(header_type == v3dheadertypes.v3dheadertypes_shiftWaitTime){
                shiftWaitTime =  header.configuration.shiftWaitTime = this.unpack_double();
@@ -11243,10 +11291,12 @@ class V3DReader{
         return header;
     }
 
+
     process_centres(){
-        let number_centers = this.unpack_unsigned_int;
+        let number_centers = this.unpack_unsigned_int();
         return this.unpack_triple_n(number_centers);
     }
+
 
     process_material(){
         let diffuse = this.unpack_rgba_float();
@@ -11261,15 +11311,19 @@ class V3DReader{
         return new v3dobjects.V3DMaterial(diffuse, emissive, specular, result[0], result[1], result[2]);
     }
 
+
     get_fn_process_type(typ){
         if(this.object_process_fns(typ) != undefined ){
-        //Binding 'this' to the function so that 'this' doesnt get lost
+        //We need to bind the current V3Dreader object to
+        //the function so that it knows what to refer to 
+        //When it calls 'this'
         return this.object_process_fns(typ).bind(this);
         }
         else{
             return null;
         }
     }
+
 
     process(force = false){
         if(this.processed && !force){
@@ -11300,23 +11354,23 @@ class V3DReader{
                 this.header = this.process_header();
             }
             else{
-            let fn = this.get_fn_process_type(type);
-            if(fn != null){
-               let obj = fn();
-                this.objects.push(obj);
+                let fn = this.get_fn_process_type(type);
+                if(fn != null){
+                    let obj = fn();
+                    this.objects.push(obj);
+                }
+                else{
+                    throw `Unkown Object type ${type}`;
+                }
             }
-            else{
-                throw `Unkown Object type ${type}`;
-            }
-        }
         }
         if(this.bytesRead != this.file.length){
             throw 'All bytes in V3D file not read';
         }
     }
 
-    //This is more like from_file_arr 
-    static from_file_name(file_name)
+
+    static from_file_arr(file_name)
     {
         let file = gzip.unzip(file_name);
         let reader_obj = new V3DReader(file);
@@ -11324,35 +11378,55 @@ class V3DReader{
     }
 } 
 
-//Load in asy_gl
-let asy_gl =  document.createElement("script");
-asy_gl.type = 'text/javascript';
 
-asy_gl.src = "https://www.math.ualberta.ca/~bowman/asygl.js";
+function load_asy_gl()
+{
+    return new Promise(function(resolve, reject){
+        let asy_gl =  document.createElement("script");
+        asy_gl.type = 'text/javascript';
 
-asy_gl.onload = function(){
-    console.log(Nmaterials);
+        asy_gl.src = "https://www.math.ualberta.ca/~bowman/asygl.js";
+
+        asy_gl.onload = function(){
+            resolve();
+        } 
+
+        asy_gl.onerror = function(){
+            reject(new Error("Could not load the asy_gl library"));
+        }
+
+        document.head.appendChild(asy_gl);
+    });
 }
 
-document.head.appendChild(asy_gl);
-//get Byte Array from file for gzip
-const input = document.querySelector('input[type="file"]');
-input.addEventListener('change', function(e){
-    let reader = new FileReader();
-    reader.readAsArrayBuffer(input.files[0]);
-    reader.onloadend = function (evt){
-      if(evt.target.readyState == FileReader.DONE){
-        let arrayBuffer = evt.target.result;
-        let v3dobj = V3DReader.from_file_name(new Uint8Array(arrayBuffer));
-        v3dobj.process();
-        webGLStart();
-      }
+
+//Wait for asy_gl before reading in document
+let promise = load_asy_gl();
+
+
+promise.then(
+
+    function(){
+        //get Byte Array from file for gzip
+        const input = document.querySelector('input[type="file"]');
+        input.addEventListener('change', function(e){
+            let reader = new FileReader();
+            reader.readAsArrayBuffer(input.files[0]);
+            reader.onloadend = function (evt){
+                if(evt.target.readyState == FileReader.DONE){
+                    let arrayBuffer = evt.target.result;
+                    let v3dobj = V3DReader.from_file_arr(new Uint8Array(arrayBuffer));
+                    v3dobj.process();
+                    webGLStart();
+                }
+            }
+        }, false);
+    },
+
+    function(error){
+        alert(error);
     }
-
-
-
-
-}, false);
+);
 },{"console":202,"gzip-js":4,"js-xdr":14}],193:[function(require,module,exports){
 (function (global){(function (){
 'use strict';
