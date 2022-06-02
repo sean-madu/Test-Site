@@ -568,16 +568,15 @@ class V3DReader {
     let type;
     while ((type = this.get_obj_type())) {
       if (type == v3dtypes.v3dtypes_material) {
-        this.materials.push(this.process_material());
+        this.process_material();
       } else if (type == v3dtypes.v3dtypes_centers) {
         this.process_centers();
       } else if (type == v3dtypes.v3dtypes_header) {
-        this.header = this.process_header();
+        this.process_header();
       } else {
         let fn = this.get_fn_process_type(type);
         if (fn != null) {
-          let obj = fn();
-          this.objects.push(obj);
+          fn();
         } else {
           alert(`Unkown Object type ${type}`);
         }
