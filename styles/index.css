@@ -1,0 +1,27 @@
+body {
+    background-color: white
+}
+
+#titleDiv {
+    display: flex;
+    justify-content: center;
+}
+
+#mainBody{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+#bottomBar{
+    background-color: black;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    padding: 0;
+}
+
+#bottomBar a {
+    color: white;
+}
