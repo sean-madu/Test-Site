@@ -1,5 +1,7 @@
 body {
-    background-color: white
+    background-color: white;
+    padding: 0%;
+    margin: 0;
 }
 
 #titleDiv {
@@ -8,20 +10,35 @@ body {
 }
 
 #mainBody{
+
     display: flex;
     justify-content: center;
     align-items: center;
     flex-direction: column;
 }
 
-#bottomBar{
+
+#navBar{
     background-color: black;
-    position: fixed;
-    bottom: 0;
+    top: 0;
     width: 100%;
-    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 2.5em;
+    overflow: hidden;
+    margin: 0%;
+    padding: 0%;
+
 }
 
-#bottomBar a {
+#navBar a {
     color: white;
+    text-decoration: none;
+}
+
+.stickyTop {
+    position: fixed;
+    top: 0;
+
 }
